@@ -1,5 +1,7 @@
 # 编译出的二进制
 todo-app
+golangtest
+hello
 *.exe
 *.out
 
