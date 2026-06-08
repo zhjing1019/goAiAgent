@@ -1,10 +1,10 @@
 // 第 3 步演示程序：最小可运行的 DeepSeek 调用示例。
 //
-// 运行前：
-//   export DEEPSEEK_API_KEY=sk-你的key
-//   export DEEPSEEK_BASE_URL=https://api.deepseek.com
+// 运行前（二选一）：
+//   方式 A：在项目根目录创建 .env 文件（推荐，程序会自动加载）
+//   方式 B：export DEEPSEEK_API_KEY=sk-你的key
 //
-// 运行：
+// 运行（必须在项目根目录 golangtest/ 下执行）：
 //   go run ./cmd/llm-demo
 //
 // 程序做了什么？
@@ -18,25 +18,19 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
 
 	"github.com/zhjing1019/goAiAgent/internal/llm"
 )
 
 func main() {
-	// ---------- 1. 检查 API Key ----------
-	if os.Getenv("DEEPSEEK_API_KEY") == "" {
-		log.Fatal("请先设置环境变量 DEEPSEEK_API_KEY（可参考 .env.example）")
-	}
-
-	// ---------- 2. 创建 Client ----------
-	// NewClientFromEnv 会读取 DEEPSEEK_API_KEY / DEEPSEEK_BASE_URL / DEEPSEEK_MODEL
+	// ---------- 1. 创建 Client ----------
+	// NewClientFromEnv 会先加载 .env，再读取 DEEPSEEK_API_KEY 等配置
 	client, err := llm.NewClientFromEnv()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// ---------- 3. 构造请求并调用 ----------
+	// ---------- 2. 构造请求并调用 ----------
 	// context.Background() 表示「没有超时限制的默认上下文」
 	// 后面 Agent 里会改成带超时的 context.WithTimeout
 	resp, err := client.Chat(context.Background(), llm.ChatRequest{
@@ -51,7 +45,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// ---------- 4. 解析并打印结果 ----------
+	// ---------- 3. 解析并打印结果 ----------
 	// AssistantMessage() 是 types.go 里的 helper，取 choices[0].message
 	msg := resp.AssistantMessage()
 	if msg == nil {

@@ -23,24 +23,14 @@ import (
 
 // toLangChainMessages 批量转换消息列表。
 func toLangChainMessages(msgs []Message) ([]lc.MessageContent, error) {
-	// 容量：预分配足够空间，避免多次扩容
 	out := make([]lc.MessageContent, 0, len(msgs))
-	fmt.Println("=================================")
-
-	print("len(msgs):", len(msgs))
-	print("msgs:", msgs)
-	// 遍历消息列表，转换每条消息
 	for _, msg := range msgs {
-		// 转换单条消息
 		mc, err := toLangChainMessage(msg)
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, mc)
 	}
-	print("out:", out)
-	fmt.Println("=================================")
-
 	return out, nil
 }
 

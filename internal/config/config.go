@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/joho/godotenv"
 )
 
 // DeepSeekConfig 连接 DeepSeek 需要的 3 个核心参数。
@@ -22,30 +24,37 @@ type DeepSeekConfig struct {
 	Model   string // 模型名，例如 deepseek-chat
 }
 
-// LoadDeepSeek 从操作系统「环境变量」加载配置。
+// LoadEnv 尝试加载项目根目录的 .env 文件到环境变量。
 //
-// 环境变量是什么？
-//   在终端 export DEEPSEEK_API_KEY=xxx 后，Go 程序可以通过 os.Getenv 读到。
+// 重要：Go 默认不会自动读 .env！
+//   只有调用 LoadEnv 后，os.Getenv 才能读到 .env 里的值。
 //
-// 使用前先确保已设置：
-//   export DEEPSEEK_API_KEY=sk-你的key
-//   export DEEPSEEK_BASE_URL=https://api.deepseek.com
+// 如果 .env 不存在（例如生产环境），会静默跳过，不影响已 export 的系统环境变量。
+func LoadEnv() {
+	_ = godotenv.Load()
+}
+
+// LoadDeepSeek 加载 DeepSeek 配置。
+//
+// 读取顺序：
+//  1. 先 LoadEnv() 加载 .env 文件
+//  2. 再用 os.Getenv 读取（.env 或 export 设置的都可以）
 func LoadDeepSeek() (DeepSeekConfig, error) {
+	LoadEnv()
+
 	// TrimSpace 去掉首尾空格，避免复制 Key 时多了空格导致鉴权失败
 	apiKey := strings.TrimSpace(os.Getenv("DEEPSEEK_API_KEY"))
 	if apiKey == "" {
-		return DeepSeekConfig{}, fmt.Errorf("环境变量 DEEPSEEK_API_KEY 未设置")
+		return DeepSeekConfig{}, fmt.Errorf("DEEPSEEK_API_KEY 未设置（请在 .env 或终端 export 中配置）")
 	}
 
 	baseURL := strings.TrimSpace(os.Getenv("DEEPSEEK_BASE_URL"))
 	if baseURL == "" {
-		// 没设置就用 DeepSeek 官方默认地址
 		baseURL = "https://api.deepseek.com"
 	}
 
 	model := strings.TrimSpace(os.Getenv("DEEPSEEK_MODEL"))
 	if model == "" {
-		// 默认对话模型
 		model = "deepseek-chat"
 	}
 
@@ -63,14 +72,33 @@ func LoadDeepSeek() (DeepSeekConfig, error) {
 //
 // 所以 BaseURL 必须是：https://api.deepseek.com/v1
 // 而不是：https://api.deepseek.com
-//
-// 示例：
-//   输入  https://api.deepseek.com
-//   输出  https://api.deepseek.com/v1
 func NormalizeOpenAIBaseURL(baseURL string) string {
-	baseURL = strings.TrimRight(baseURL, "/") // 去掉末尾 /
+	baseURL = strings.TrimRight(baseURL, "/")
 	if !strings.HasSuffix(baseURL, "/v1") {
 		baseURL += "/v1"
 	}
 	return baseURL
+}
+
+// MySQLConfig MySQL 连接配置。
+type MySQLConfig struct {
+	DSN string // 完整 DSN，优先使用
+}
+
+// LoadMySQL 从环境变量加载 MySQL 配置。
+//
+// 环境变量 MYSQL_DSN，示例：
+//
+//	MYSQL_DSN=root:password@tcp(127.0.0.1:3306)/go_agent?parseTime=true&charset=utf8mb4&loc=Local
+//
+// 若未设置 MYSQL_DSN，返回空配置（表示不使用 MySQL，Agent 仍可用内存记忆）。
+func LoadMySQL() (MySQLConfig, error) {
+	LoadEnv()
+	dsn := strings.TrimSpace(os.Getenv("MYSQL_DSN"))
+	return MySQLConfig{DSN: dsn}, nil
+}
+
+// Enabled 是否配置了 MySQL。
+func (c MySQLConfig) Enabled() bool {
+	return c.DSN != ""
 }

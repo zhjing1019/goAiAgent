@@ -11,7 +11,10 @@ package llm
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/zhjing1019/goAiAgent/internal/config"
 	lcopenai "github.com/tmc/langchaingo/llms/openai"
@@ -106,6 +109,8 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, erro
 		req.Model = c.model
 	}
 
+	debugLogRequest(req)
+
 	// 第 1 步：格式转换（我们的 Message → langchaingo MessageContent）
 	msgs, err := toLangChainMessages(req.Messages)
 	if err != nil {
@@ -122,4 +127,26 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, erro
 
 	// 第 4 步：格式转换（langchaingo ContentResponse → 我们的 ChatResponse）
 	return fromLangChainResponse(req.Model, resp), nil
+}
+
+func debugLogRequest(req ChatRequest) {
+	if !llmDebugEnabled() {
+		return
+	}
+	b, err := json.MarshalIndent(req, "", "  ")
+	if err != nil {
+		fmt.Printf("[llm] 请求参数序列化失败: %v\n", err)
+		return
+	}
+	fmt.Printf("[llm] 请求参数:\n%s\n", b)
+}
+
+func llmDebugEnabled() bool {
+	for _, key := range []string{"AGENT_DEBUG", "LLM_DEBUG"} {
+		switch strings.ToLower(strings.TrimSpace(os.Getenv(key))) {
+		case "1", "true", "yes", "on":
+			return true
+		}
+	}
+	return false
 }
