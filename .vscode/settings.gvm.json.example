@@ -1,0 +1,7 @@
+{
+  "_comment": "GVM 安装完成后，复制为 settings.json 或合并 go.goroot / go.alternateTools",
+  "go.goroot": "${env:HOME}/.gvm/gos/go1.26.3",
+  "go.alternateTools": {
+    "go": "${env:HOME}/.gvm/gos/go1.26.3/bin/go"
+  }
+}

@@ -2,11 +2,13 @@
 todo-app
 golangtest
 hello
+bin/
 *.exe
 *.out
 
 # Go 测试缓存
 *.test
+vendor/
 
 # 系统文件
 .DS_Store
@@ -14,5 +16,12 @@ hello
 # IDE（可选，看个人习惯）
 .idea/
 
+# Go 依赖隔离本地缓存（不提交，vendor/ 可选择提交）
+.cache/
+
 # 环境变量（含 API Key，切勿提交）
 .env
+.env.*
+!.env.example
+!config/env/*.example
+.go.env.local

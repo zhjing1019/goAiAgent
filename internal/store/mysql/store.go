@@ -25,16 +25,27 @@ type Store struct {
 //
 //	user:pass@tcp(127.0.0.1:3306)/go_agent?parseTime=true&charset=utf8mb4&loc=Local
 func Open(dsn string) (*Store, error) {
+	// 打开 MySQL 连接
 	db, err := sql.Open("mysql", dsn)
+	// 如果打开连接失败，返回错误
 	if err != nil {
 		return nil, fmt.Errorf("open mysql: %w", err)
 	}
+	// 设置连接池最大连接数
 	db.SetMaxOpenConns(10)
+	// 设置连接池最大空闲连接数
 	db.SetMaxIdleConns(5)
+	// 设置连接池最大生命周期
 	db.SetConnMaxLifetime(time.Hour)
+	// 创建一个超时上下文
 
+	// 创建一个超时上下文
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// 延迟取消上下文
 	defer cancel()
+	// ping MySQL 连接
+	// 	向 MySQL 数据库发送一个 “心跳包”，看看数据库连没连上、活不活。
+	// 如果连不上，就关闭连接，返回错误。
 	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("ping mysql: %w", err)

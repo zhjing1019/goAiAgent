@@ -1,23 +1,24 @@
 {
-    // Go 核心配置
-    "code-runner.runInTerminal": true,
-    "code-runner.executorMap": {
-      "go": "go run $fullFileName"
-    },
-    "go.useLanguageServer": true,
-    "go.goroot": "/usr/local/go",
-    "go.alternateTools": {
-      "go": "/usr/local/go/bin/go"
-    },
-    "go.toolsEnvVars": {
-      "GO111MODULE": "on",
-      "GOPROXY": "https://goproxy.cn,direct"
-    },
-    // 补全/格式化/调试
-    "gopls": {
-      "usePlaceholders": true,
-      "completionDocumentation": true
-    },
-    "editor.formatOnSave": true,
-    "editor.defaultFormatter": "ms-vscode.go"
+  "go.useLanguageServer": true,
+  "go.goroot": "/usr/local/go",
+  "go.alternateTools": {
+    "go": "/usr/local/go/bin/go"
+  },
+  "go.toolsEnvVars": {
+    "GO111MODULE": "on",
+    "GOPROXY": "https://goproxy.cn,direct",
+    "GOMODCACHE": "${workspaceFolder}/.cache/go/pkg/mod",
+    "GOCACHE": "${workspaceFolder}/.cache/go/build",
+    "GOPATH": "${workspaceFolder}/.cache/go/gopath"
+  },
+  "gopls": {
+    "usePlaceholders": true,
+    "completionDocumentation": true
+  },
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "ms-vscode.go",
+  "code-runner.runInTerminal": true,
+  "code-runner.executorMap": {
+    "go": "bash scripts/with-go-env.sh go run $fullFileName"
   }
+}

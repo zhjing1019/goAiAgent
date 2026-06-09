@@ -11,8 +11,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-
-	"github.com/joho/godotenv"
 )
 
 // DeepSeekConfig 连接 DeepSeek 需要的 3 个核心参数。
@@ -22,16 +20,6 @@ type DeepSeekConfig struct {
 	APIKey  string // 密钥，从 DEEPSEEK_API_KEY 读取
 	BaseURL string // API 地址，例如 https://api.deepseek.com/v1
 	Model   string // 模型名，例如 deepseek-chat
-}
-
-// LoadEnv 尝试加载项目根目录的 .env 文件到环境变量。
-//
-// 重要：Go 默认不会自动读 .env！
-//   只有调用 LoadEnv 后，os.Getenv 才能读到 .env 里的值。
-//
-// 如果 .env 不存在（例如生产环境），会静默跳过，不影响已 export 的系统环境变量。
-func LoadEnv() {
-	_ = godotenv.Load()
 }
 
 // LoadDeepSeek 加载 DeepSeek 配置。
@@ -101,4 +89,71 @@ func LoadMySQL() (MySQLConfig, error) {
 // Enabled 是否配置了 MySQL。
 func (c MySQLConfig) Enabled() bool {
 	return c.DSN != ""
+}
+
+// MilvusConfig Milvus 向量库配置（第 6 步 RAG）。
+type MilvusConfig struct {
+	Addr       string // MILVUS_ADDR，例如 127.0.0.1:19530
+	Token      string // MILVUS_TOKEN，Zilliz Cloud 等需要，本地可留空
+	Collection string // MILVUS_COLLECTION，默认 go_agent_kb
+}
+
+// LoadMilvus 从环境变量加载 Milvus 配置。
+func LoadMilvus() (MilvusConfig, error) {
+	LoadEnv()
+	addr := strings.TrimSpace(os.Getenv("MILVUS_ADDR"))
+	token := strings.TrimSpace(os.Getenv("MILVUS_TOKEN"))
+	collection := strings.TrimSpace(os.Getenv("MILVUS_COLLECTION"))
+	if collection == "" {
+		collection = "go_agent_kb"
+	}
+	return MilvusConfig{
+		Addr:       addr,
+		Token:      token,
+		Collection: collection,
+	}, nil
+}
+
+// Enabled 是否配置了 Milvus。
+func (c MilvusConfig) Enabled() bool {
+	return c.Addr != ""
+}
+
+// EmbeddingConfig 向量化（Embedding）配置。
+//
+// 需要 OpenAI 兼容的 /embeddings 接口（OpenAI、SiliconFlow、阿里云等）。
+type EmbeddingConfig struct {
+	APIKey  string
+	BaseURL string
+	Model   string
+}
+
+// LoadEmbedding 从环境变量加载 Embedding 配置。
+//
+// 环境变量：
+//
+//	EMBEDDING_API_KEY=sk-...
+//	EMBEDDING_BASE_URL=https://api.openai.com/v1
+//	EMBEDDING_MODEL=text-embedding-3-small
+func LoadEmbedding() (EmbeddingConfig, error) {
+	LoadEnv()
+	apiKey := strings.TrimSpace(os.Getenv("EMBEDDING_API_KEY"))
+	baseURL := strings.TrimSpace(os.Getenv("EMBEDDING_BASE_URL"))
+	if baseURL == "" {
+		baseURL = "https://api.openai.com/v1"
+	}
+	model := strings.TrimSpace(os.Getenv("EMBEDDING_MODEL"))
+	if model == "" {
+		model = "text-embedding-3-small"
+	}
+	return EmbeddingConfig{
+		APIKey:  apiKey,
+		BaseURL: NormalizeOpenAIBaseURL(baseURL),
+		Model:   model,
+	}, nil
+}
+
+// Enabled 是否配置了 Embedding。
+func (c EmbeddingConfig) Enabled() bool {
+	return c.APIKey != ""
 }

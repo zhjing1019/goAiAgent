@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/zhjing1019/goAiAgent/internal/llm"
+	"github.com/zhjing1019/goAiAgent/internal/rag"
 	"github.com/zhjing1019/goAiAgent/internal/store"
 )
 
@@ -66,12 +67,14 @@ func New(cfg Config) (*Agent, error) {
 // Run 处理用户输入，返回最终文本答案。
 func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 	debugLog("用户输入: %s", userInput)
-
+	// 确保会话存在
 	if err := a.ensureSession(ctx, userInput); err != nil {
 		return "", err
 	}
 
+	// 创建一个用户消息对象
 	userMsg := llm.NewUserMessage(userInput)
+	// 把用户消息追加到消息列表
 	if err := a.appendMessage(ctx, userMsg); err != nil {
 		return "", err
 	}
@@ -235,10 +238,16 @@ func (MultiplyNumbersTool) Execute(_ context.Context, argsJSON string) (string, 
 }
 
 // DefaultRegistry 返回带演示工具的注册表。
-func DefaultRegistry() *Registry {
+//
+// kb 非 nil 时会额外注册 search_knowledge / add_knowledge（第 6 步 RAG）。
+func DefaultRegistry(kb rag.KnowledgeBase) *Registry {
 	r := NewRegistry()
 	r.Register(GetCurrentTimeTool{})
 	r.Register(AddNumbersTool{})
 	r.Register(MultiplyNumbersTool{})
+	if kb != nil {
+		r.Register(SearchKnowledgeTool{KB: kb})
+		r.Register(AddKnowledgeTool{KB: kb})
+	}
 	return r
 }

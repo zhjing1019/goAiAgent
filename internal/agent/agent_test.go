@@ -7,7 +7,7 @@ import (
 
 // 测试工具执行
 func TestRegistryExecute(t *testing.T) {
-	r := DefaultRegistry()
+	r := DefaultRegistry(nil)
 
 	result, err := r.Execute(context.Background(), "add_numbers", `{"a":3,"b":5}`)
 	if err != nil {
