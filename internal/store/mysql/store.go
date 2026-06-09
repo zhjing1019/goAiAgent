@@ -197,9 +197,11 @@ func (s *Store) ListSessions(ctx context.Context, limit int) ([]store.Session, e
 		return nil, err
 	}
 	defer rows.Close()
-
+	// 创建一个空数组，用于存储会话	
 	var out []store.Session
+	// 遍历查询结果
 	for rows.Next() {
+		// 创建一个会话对象
 		var sess store.Session
 		if err := rows.Scan(&sess.ID, &sess.Title, &sess.CreatedAt, &sess.UpdatedAt); err != nil {
 			return nil, err

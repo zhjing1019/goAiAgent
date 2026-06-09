@@ -9,9 +9,10 @@
 //   - reset / new       清空对话记忆
 //   - sessions          列出 MySQL 会话（需 MYSQL_DSN）
 //   - load <id>         恢复 MySQL 会话
-//   - kb add <文本>     手动写入知识库（需 Milvus + Embedding）
-//   - kb search <问题>  手动检索知识库
-//   - kb seed           写入示例知识（便于测试 RAG）
+//   - kb add <文本>         手动写入知识库（需 Milvus + Embedding）
+//   - kb search <问题>      手动检索知识库
+//   - kb ingest <目录>      批量导入 .md/.txt 文档
+//   - kb seed               写入示例知识（便于测试 RAG）
 package main
 
 import (
@@ -20,6 +21,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/zhjing1019/goAiAgent/internal/agent"
@@ -152,7 +154,7 @@ func printHelp(ragEnabled, mysqlEnabled bool) {
 	fmt.Println("可用工具: get_current_time, add_numbers, multiply_numbers")
 	if ragEnabled {
 		fmt.Println("RAG 工具: search_knowledge, add_knowledge")
-		fmt.Println("知识库命令: kb add <文本> | kb search <问题> | kb seed")
+		fmt.Println("知识库命令: kb ingest <目录> | kb add <文本> | kb search <问题> | kb seed")
 	}
 	if mysqlEnabled {
 		fmt.Println("会话命令: sessions | load <id> | reset")
@@ -204,6 +206,13 @@ func handleKB(ctx context.Context, kb rag.KnowledgeBase, input string) {
 	switch {
 	case rest == "seed":
 		seedKB(ctx, kb)
+	case strings.HasPrefix(rest, "ingest "):
+		dir := strings.TrimSpace(strings.TrimPrefix(rest, "ingest "))
+		if dir == "" {
+			fmt.Println("用法: kb ingest <目录>")
+			return
+		}
+		ingestKB(ctx, kb, dir)
 	case strings.HasPrefix(rest, "add "):
 		text := strings.TrimSpace(strings.TrimPrefix(rest, "add "))
 		if text == "" {
@@ -234,8 +243,49 @@ func handleKB(ctx context.Context, kb rag.KnowledgeBase, input string) {
 			fmt.Printf("[%d] score=%.3f source=%s\n%s\n", i+1, c.Score, c.Source, c.Content)
 		}
 	default:
-		fmt.Println("用法: kb add <文本> | kb search <问题> | kb seed")
+		fmt.Println("用法: kb ingest <目录> | kb add <文本> | kb search <问题> | kb seed")
 	}
+}
+
+func ingestKB(ctx context.Context, kb rag.KnowledgeBase, dir string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		fmt.Println("错误:", err)
+		return
+	}
+	var count, chunks int
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(e.Name()))
+		if ext != ".md" && ext != ".txt" {
+			continue
+		}
+		path := filepath.Join(dir, e.Name())
+		content, err := os.ReadFile(path)
+		if err != nil {
+			fmt.Println("读取失败:", path, err)
+			return
+		}
+		text := strings.TrimSpace(string(content))
+		if text == "" {
+			continue
+		}
+		parts := rag.SplitText(text, 500)
+		if err := kb.Add(ctx, text, e.Name()); err != nil {
+			fmt.Println("写入失败:", e.Name(), err)
+			return
+		}
+		count++
+		chunks += len(parts)
+		fmt.Printf("  ✅ %s → %d 切片\n", e.Name(), len(parts))
+	}
+	if count == 0 {
+		fmt.Println("（目录下没有 .md / .txt 文件）")
+		return
+	}
+	fmt.Printf("✅ 共导入 %d 个文件，%d 个向量切片\n", count, chunks)
 }
 
 func seedKB(ctx context.Context, kb rag.KnowledgeBase) {

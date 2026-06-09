@@ -1,4 +1,4 @@
-.PHONY: help gvm-install gvm-use env-init env-init-all deps-init deps-vendor deps-verify run-dev run-staging run-prod run-agent test build
+.PHONY: help gvm-install gvm-use env-init env-init-all deps-init deps-vendor deps-verify run-dev run-staging run-prod run-agent kb-ingest kb-search test build
 
 GO       := bash scripts/with-go-env.sh go
 GO_VERSION := $(shell cat .go-version 2>/dev/null || echo go1.26.3)
@@ -60,6 +60,13 @@ run-staging:
 
 run-prod:
 	$(MAKE) run-agent APP_ENV=production
+
+kb-ingest:
+	APP_ENV=$(APP_ENV) $(GO) run ./cmd/kb-ingest testdata/knowledge
+
+kb-search:
+	@test -n "$(QUERY)" || (echo "用法: make kb-search QUERY='你的问题'"; exit 1)
+	APP_ENV=$(APP_ENV) $(GO) run ./cmd/kb-search "$(QUERY)"
 
 build:
 	$(GO) build -o bin/agent-demo ./cmd/agent-demo
