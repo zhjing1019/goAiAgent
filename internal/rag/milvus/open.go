@@ -3,10 +3,14 @@ package milvus
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/zhjing1019/goAiAgent/internal/config"
 	"github.com/zhjing1019/goAiAgent/internal/rag"
 )
+
+// connectTimeout Milvus gRPC 连接超时（未启动时会卡很久，必须限制）。
+const connectTimeout = 15 * time.Second
 
 // OpenFromEnv 从环境变量打开 Milvus 知识库。
 //
@@ -33,5 +37,7 @@ func OpenFromEnv(ctx context.Context) (rag.KnowledgeBase, error) {
 		return nil, err
 	}
 
-	return Open(ctx, milvusCfg, embedder)
+	connectCtx, cancel := context.WithTimeout(ctx, connectTimeout)
+	defer cancel()
+	return Open(connectCtx, milvusCfg, embedder)
 }

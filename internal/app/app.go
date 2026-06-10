@@ -52,6 +52,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 		return nil, err
 	}
 	if mysqlCfg.Enabled() {
+		fmt.Println("⏳ 正在连接 MySQL...")
 		if err := mysql.EnsureDatabase(mysqlCfg.DSN); err != nil {
 			return nil, fmt.Errorf("mysql bootstrap: %w", err)
 		}
@@ -78,6 +79,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 		return nil, err
 	}
 	if redisCfg.Enabled() {
+		fmt.Println("⏳ 正在连接 Redis...")
 		redisClient, err = redisx.Open(ctx, redisCfg)
 		if err != nil {
 			fmt.Printf("⚠️  Redis 连接失败，已跳过缓存与限流: %v\n", err)
@@ -94,15 +96,16 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 		}
 	}
 
-	kb, err := ragmilvus.OpenFromEnv(ctx)
-	if err != nil {
-		if redisClient != nil {
-			_ = redisClient.Close()
+	milvusCfg, _ := config.LoadMilvus()
+	var kb rag.KnowledgeBase
+	if milvusCfg.Enabled() {
+		fmt.Println("⏳ 正在连接 Milvus（最多等待 15 秒）...")
+		kb, err = ragmilvus.OpenFromEnv(ctx)
+		if err != nil {
+			fmt.Printf("⚠️  Milvus 连接失败，RAG 未启用: %v\n", err)
+			fmt.Println("   启动: docker start milvus-standalone")
+			kb = nil
 		}
-		if mysqlStore != nil {
-			_ = mysqlStore.Close()
-		}
-		return nil, fmt.Errorf("rag: %w", err)
 	}
 
 	ragEnabled := kb != nil
@@ -143,6 +146,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 		status: Status{
 			Env:                 config.AppEnv(),
 			MySQLEnabled:        mysqlStore != nil,
+			RAGConfigured:       milvusCfg.Enabled(),
 			RAGEnabled:          ragEnabled,
 			RedisConfigured:     redisCfg.Enabled(),
 			RedisEnabled:        redisClient != nil,

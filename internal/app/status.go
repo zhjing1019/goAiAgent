@@ -10,7 +10,8 @@ import (
 type Status struct {
 	Env                 string
 	MySQLEnabled        bool
-	RAGEnabled          bool
+	RAGConfigured       bool // MILVUS_ADDR 已配置
+	RAGEnabled          bool // Milvus 实际连接成功
 	RedisConfigured     bool // REDIS_ADDR 已配置
 	RedisEnabled        bool // 实际连接成功
 	SessionCacheEnabled bool // Redis + MySQL 会话缓存
@@ -27,6 +28,9 @@ func (s Status) PrintStartup() {
 	}
 	if s.RAGEnabled {
 		fmt.Println("✅ Milvus 知识库已连接（search_knowledge / add_knowledge 已启用）")
+	} else if s.RAGConfigured {
+		fmt.Println("⚠️  MILVUS_ADDR 已配置但连接失败，RAG 未启用")
+		fmt.Println("   启动: docker start milvus-standalone")
 	} else {
 		fmt.Println("ℹ️  未配置 MILVUS_ADDR + EMBEDDING_API_KEY，RAG 未启用")
 	}

@@ -30,6 +30,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"env":           st.Env,
 		"mysql":         st.MySQLEnabled,
 		"rag":           st.RAGEnabled,
+		"rag_configured": st.RAGConfigured,
 		"redis":         st.RedisEnabled,
 		"session_cache": st.SessionCacheEnabled,
 		"rate_limit":    st.RateLimitEnabled,
