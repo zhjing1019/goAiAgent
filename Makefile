@@ -1,4 +1,4 @@
-.PHONY: help gvm-install gvm-use env-init env-init-all deps-init deps-vendor deps-verify run-dev run-staging run-prod run-agent kb-ingest kb-search test build
+.PHONY: help gvm-install gvm-use env-init env-init-all deps-init deps-vendor deps-verify run-dev run-staging run-prod run-agent run-server-dev run-server-staging kb-ingest kb-search test build build-server
 
 GO       := bash scripts/with-go-env.sh go
 GO_VERSION := $(shell cat .go-version 2>/dev/null || echo go1.26.3)
@@ -19,12 +19,14 @@ help:
 	@echo "应用环境 (APP_ENV):"
 	@echo "  make env-init        初始化 .env.development"
 	@echo "  make env-init-all    初始化 dev/staging 环境文件"
-	@echo "  make run-dev         APP_ENV=development 运行 agent-demo"
+	@echo "  make run-dev         APP_ENV=development 运行 agent-demo (CLI)"
 	@echo "  make run-staging     APP_ENV=staging 运行 agent-demo"
 	@echo "  make run-prod        APP_ENV=production 运行 agent-demo"
+	@echo "  make run-server-dev  APP_ENV=development 运行 HTTP API"
 	@echo ""
 	@echo "构建与测试:"
 	@echo "  make build           编译 agent-demo"
+	@echo "  make build-server    编译 agent-server"
 	@echo "  make test            运行全部测试"
 
 deps-init:
@@ -61,6 +63,15 @@ run-staging:
 run-prod:
 	$(MAKE) run-agent APP_ENV=production
 
+run-server:
+	APP_ENV=$(APP_ENV) $(GO) run ./cmd/agent-server
+
+run-server-dev:
+	$(MAKE) run-server APP_ENV=development
+
+run-server-staging:
+	$(MAKE) run-server APP_ENV=staging
+
 kb-ingest:
 	APP_ENV=$(APP_ENV) $(GO) run ./cmd/kb-ingest testdata/knowledge
 
@@ -70,6 +81,9 @@ kb-search:
 
 build:
 	$(GO) build -o bin/agent-demo ./cmd/agent-demo
+
+build-server:
+	$(GO) build -o bin/agent-server ./cmd/agent-server
 
 test:
 	$(GO) test ./...

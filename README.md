@@ -17,8 +17,9 @@ make env-init
 
 # 2. 编辑 .env.development，填入 DEEPSEEK_API_KEY、MYSQL_DSN、EMBEDDING_API_KEY 等
 
-# 3. 启动 Agent（开发环境）
-make run-dev
+# 3. 启动 Agent（CLI 或 HTTP）
+make run-dev          # 终端对话
+make run-server-dev   # HTTP API，默认 :8080
 ```
 
 ## 环境配置
@@ -34,6 +35,70 @@ make run-dev
 | `EMBEDDING_API_KEY` | Embedding API Key（RAG 必填） |
 | `EMBEDDING_BASE_URL` | 如 `https://api.siliconflow.cn/v1` |
 | `EMBEDDING_MODEL` | 如 `BAAI/bge-large-zh-v1.5` |
+| `HTTP_ADDR` | HTTP 监听地址，默认 `:8080` |
+| `REDIS_ADDR` | Redis 地址，如 `127.0.0.1:6379` |
+| `REDIS_SESSION_TTL` | 会话消息缓存 TTL，默认 `24h`（需 MySQL） |
+| `REDIS_RATE_LIMIT` | `/api/chat` 每 IP 每分钟上限，`0`=不限流 |
+
+---
+
+## Redis 使用场景
+
+本项目已接入 Redis，适合以下两类业务：
+
+| 场景 | 说明 | 配置要求 |
+|------|------|----------|
+| **会话热数据缓存** | HTTP 每次对话都要 `LoadSession` 读历史，Redis 缓存消息列表，降低 MySQL 压力 | `REDIS_ADDR` + `MYSQL_DSN` |
+| **HTTP API 限流** | 防止 `/api/chat` 被刷爆、保护 DeepSeek 配额 | `REDIS_ADDR` + `REDIS_RATE_LIMIT=60` |
+
+本地启动 Redis（Docker）：
+
+```bash
+docker run -d --name redis -p 6379:6379 redis:7
+```
+
+`.env.development` 示例：
+
+```env
+REDIS_ADDR=127.0.0.1:6379
+REDIS_SESSION_TTL=24h
+REDIS_RATE_LIMIT=60
+```
+
+---
+
+## HTTP API（第 8 步）
+
+启动服务：
+
+```bash
+make run-server-dev
+```
+
+常用接口：
+
+```bash
+# 健康检查
+curl http://localhost:8080/api/health
+
+# 对话（首次不传 session_id，响应里会返回 session_id）
+curl -X POST http://localhost:8080/api/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"现在几点？"}'
+
+# 继续同一会话（需 MySQL）
+curl -X POST http://localhost:8080/api/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"刚才我问了什么？","session_id":"<上一步返回的 id>"}'
+
+# 列出会话（需 MySQL）
+curl http://localhost:8080/api/sessions
+
+# RAG 检索（需 Milvus）
+curl -X POST http://localhost:8080/api/knowledge/search \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"RAG 切分策略","top_k":3}'
+```
 
 ---
 
@@ -185,9 +250,13 @@ make run-dev
 
 ```
 cmd/agent-demo/          Agent 交互入口（CLI）
+cmd/agent-server/        HTTP API 入口（第 8 步）
 cmd/kb-ingest/           批量导入文档到 Milvus
 cmd/kb-search/           命令行检索验证
 internal/app/            第 7 步：统一装配 LLM + MySQL + Milvus + Agent
+internal/app/httpapi/    第 8 步：HTTP 路由与处理器
+internal/redisx/         Redis 客户端与限流
+internal/store/cached/   Redis 会话消息缓存（装饰 MySQL）
 internal/agent/          Agent 循环与工具
 internal/rag/            切分、Embedding、知识库接口
 internal/rag/milvus/     Milvus 实现

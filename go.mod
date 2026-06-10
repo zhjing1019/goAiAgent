@@ -3,14 +3,18 @@ module github.com/zhjing1019/goAiAgent
 go 1.26.3
 
 require (
+	github.com/alicebob/miniredis/v2 v2.34.0
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/google/uuid v1.6.0
 	github.com/joho/godotenv v1.5.1
+	github.com/milvus-io/milvus/client/v2 v2.6.0
+	github.com/redis/go-redis/v9 v9.20.0
 	github.com/tmc/langchaingo v0.1.14
 )
 
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
+	github.com/alicebob/gopher-json v0.0.0-20230218143504-906a9b012302 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
@@ -48,7 +52,6 @@ require (
 	github.com/lufia/plan9stats v0.0.0-20250317134145-8bc96cf8fc35 // indirect
 	github.com/milvus-io/milvus-proto/go-api/v2 v2.6.1-0.20250819024338-07695f709619 // indirect
 	github.com/milvus-io/milvus-sdk-go/v2 v2.4.0 // indirect
-	github.com/milvus-io/milvus/client/v2 v2.6.0 // indirect
 	github.com/milvus-io/milvus/pkg/v2 v2.0.0-20250319085209-5a6b4e56d59e // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
@@ -82,6 +85,7 @@ require (
 	github.com/uber/jaeger-client-go v2.30.0+incompatible // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2 // indirect
+	github.com/yuin/gopher-lua v1.1.1 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.etcd.io/bbolt v1.3.11 // indirect
 	go.etcd.io/etcd/api/v3 v3.5.5 // indirect

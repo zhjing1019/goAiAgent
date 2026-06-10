@@ -10,7 +10,9 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // DeepSeekConfig 连接 DeepSeek 需要的 3 个核心参数。
@@ -156,4 +158,74 @@ func LoadEmbedding() (EmbeddingConfig, error) {
 // Enabled 是否配置了 Embedding。
 func (c EmbeddingConfig) Enabled() bool {
 	return c.APIKey != ""
+}
+
+// RedisConfig Redis 连接与业务配置。
+//
+// Redis 在本项目是两个「加速器」，不替代 MySQL：
+//   - SessionCacheTTL：缓存会话消息，减少 LoadSession 的 MySQL 查询
+//   - RateLimitPerMin：限制 /api/chat 调用频率，保护 LLM 配额
+type RedisConfig struct {
+	Addr            string        // REDIS_ADDR，如 127.0.0.1:6379
+	Password        string        // REDIS_PASSWORD，本地通常为空
+	DB              int           // REDIS_DB，逻辑库编号 0~15
+	SessionCacheTTL time.Duration // REDIS_SESSION_TTL，缓存过期时间
+	RateLimitPerMin int           // REDIS_RATE_LIMIT，每 IP 每分钟上限；0=不限流
+}
+
+// LoadRedis 从环境变量加载 Redis 配置。
+//
+// 环境变量：
+//
+//	REDIS_ADDR=127.0.0.1:6379
+//	REDIS_PASSWORD=
+//	REDIS_DB=0
+//	REDIS_SESSION_TTL=24h
+//	REDIS_RATE_LIMIT=60
+func LoadRedis() (RedisConfig, error) {
+	LoadEnv()
+	addr := strings.TrimSpace(os.Getenv("REDIS_ADDR"))
+	password := strings.TrimSpace(os.Getenv("REDIS_PASSWORD"))
+	db := 0
+	if raw := strings.TrimSpace(os.Getenv("REDIS_DB")); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil {
+			db = n
+		}
+	}
+	ttl := 24 * time.Hour
+	if raw := strings.TrimSpace(os.Getenv("REDIS_SESSION_TTL")); raw != "" {
+		if d, err := time.ParseDuration(raw); err == nil {
+			ttl = d
+		}
+	}
+	rateLimit := 0
+	if raw := strings.TrimSpace(os.Getenv("REDIS_RATE_LIMIT")); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil {
+			rateLimit = n
+		}
+	}
+	return RedisConfig{
+		Addr:            addr,
+		Password:        password,
+		DB:              db,
+		SessionCacheTTL: ttl,
+		RateLimitPerMin: rateLimit,
+	}, nil
+}
+
+// Enabled 是否配置了 Redis。
+func (c RedisConfig) Enabled() bool {
+	return c.Addr != ""
+}
+
+// LoadHTTPAddr 读取 HTTP 监听地址，默认 :8080。
+//
+// 环境变量 HTTP_ADDR，示例：0.0.0.0:8080
+func LoadHTTPAddr() (string, error) {
+	LoadEnv()
+	addr := strings.TrimSpace(os.Getenv("HTTP_ADDR"))
+	if addr == "" {
+		addr = ":8080"
+	}
+	return addr, nil
 }

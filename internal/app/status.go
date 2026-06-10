@@ -8,9 +8,13 @@ import (
 
 // Status 启动时各子系统是否就绪（不含密钥）。
 type Status struct {
-	Env          string
-	MySQLEnabled bool
-	RAGEnabled   bool
+	Env                 string
+	MySQLEnabled        bool
+	RAGEnabled          bool
+	RedisConfigured     bool // REDIS_ADDR 已配置
+	RedisEnabled        bool // 实际连接成功
+	SessionCacheEnabled bool // Redis + MySQL 会话缓存
+	RateLimitEnabled    bool
 }
 
 // PrintStartup 打印环境与子系统状态。
@@ -25,6 +29,20 @@ func (s Status) PrintStartup() {
 		fmt.Println("✅ Milvus 知识库已连接（search_knowledge / add_knowledge 已启用）")
 	} else {
 		fmt.Println("ℹ️  未配置 MILVUS_ADDR + EMBEDDING_API_KEY，RAG 未启用")
+	}
+	if s.RedisEnabled {
+		fmt.Println("✅ Redis 已连接")
+		if s.SessionCacheEnabled {
+			fmt.Println("   └─ 会话消息缓存已启用（加速 LoadSession）")
+		}
+		if s.RateLimitEnabled {
+			fmt.Println("   └─ HTTP /api/chat 限流已启用")
+		}
+	} else if s.RedisConfigured {
+		fmt.Println("⚠️  REDIS_ADDR 已配置但连接失败，缓存与限流未启用")
+		fmt.Println("   启动: docker run -d --name redis -p 6379:6379 redis:7")
+	} else {
+		fmt.Println("ℹ️  未配置 REDIS_ADDR，跳过缓存与限流")
 	}
 }
 

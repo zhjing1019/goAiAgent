@@ -9,7 +9,9 @@ import (
 	"github.com/zhjing1019/goAiAgent/internal/llm"
 	"github.com/zhjing1019/goAiAgent/internal/rag"
 	ragmilvus "github.com/zhjing1019/goAiAgent/internal/rag/milvus"
+	"github.com/zhjing1019/goAiAgent/internal/redisx"
 	"github.com/zhjing1019/goAiAgent/internal/store"
+	"github.com/zhjing1019/goAiAgent/internal/store/cached"
 	"github.com/zhjing1019/goAiAgent/internal/store/mysql"
 )
 
@@ -21,11 +23,14 @@ type Config struct {
 
 // App 单体 Agent 应用：统一装配 LLM + 工具 + MySQL + Milvus。
 type App struct {
-	agent *agent.Agent
-	kb    rag.KnowledgeBase
-	store store.SessionStore
-	mysql *mysql.Store // 非 nil 时 Close 会关闭连接
-	status Status
+	agent    *agent.Agent   // CLI 默认 Agent（共享单会话）
+	agentTpl agent.Config   // HTTP 按会话创建 Agent 的模板
+	kb       rag.KnowledgeBase
+	store       store.SessionStore
+	mysql       *mysql.Store    // 非 nil 时 Close 会关闭连接
+	redis       *redisx.Client  // 非 nil 时 Close 会关闭连接
+	rateLimiter *redisx.RateLimiter
+	status      Status
 }
 
 // NewFromEnv 从环境变量创建并装配完整 Agent 应用。
@@ -60,8 +65,40 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 		}
 		sessionStore = mysqlStore
 	}
+
+	// ---------- Redis 装配（可选）----------
+	// 配置了 REDIS_ADDR 才启用；连不上会降级，不阻断启动。
+	var redisClient *redisx.Client
+	var rateLimiter *redisx.RateLimiter
+	redisCfg, err := config.LoadRedis()
+	if err != nil {
+		if mysqlStore != nil {
+			_ = mysqlStore.Close()
+		}
+		return nil, err
+	}
+	if redisCfg.Enabled() {
+		redisClient, err = redisx.Open(ctx, redisCfg)
+		if err != nil {
+			fmt.Printf("⚠️  Redis 连接失败，已跳过缓存与限流: %v\n", err)
+			fmt.Println("   启动 Redis: docker start redis  或  docker run -d --name redis -p 6379:6379 redis:7")
+		} else {
+			// 有 MySQL 时：用 cached.Store 包装，LoadSession 先走 Redis
+			if sessionStore != nil {
+				sessionStore = cached.New(sessionStore, redisClient.RDB(), redisCfg.SessionCacheTTL)
+			}
+			// REDIS_RATE_LIMIT > 0 时：HTTP 中间件对 /api/chat 限流
+			if redisCfg.RateLimitPerMin > 0 {
+				rateLimiter = redisx.NewRateLimiter(redisClient.RDB(), redisCfg.RateLimitPerMin)
+			}
+		}
+	}
+
 	kb, err := ragmilvus.OpenFromEnv(ctx)
 	if err != nil {
+		if redisClient != nil {
+			_ = redisClient.Close()
+		}
 		if mysqlStore != nil {
 			_ = mysqlStore.Close()
 		}
@@ -76,14 +113,19 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 		cfg.MaxSteps = 10
 	}
 
-	ag, err := agent.New(agent.Config{
+	tools := agent.DefaultRegistry(kb)
+	agentCfg := agent.Config{
 		Client:       client,
-		Tools:        agent.DefaultRegistry(kb),
+		Tools:        tools,
 		Store:        sessionStore,
 		SystemPrompt: cfg.SystemPrompt,
 		MaxSteps:     cfg.MaxSteps,
-	})
+	}
+	ag, err := agent.New(agentCfg)
 	if err != nil {
+		if redisClient != nil {
+			_ = redisClient.Close()
+		}
 		if mysqlStore != nil {
 			_ = mysqlStore.Close()
 		}
@@ -91,24 +133,42 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	}
 
 	return &App{
-		agent: ag,
-		kb:    kb,
-		store: sessionStore,
-		mysql: mysqlStore,
+		agent:       ag,
+		agentTpl:    agentCfg,
+		kb:          kb,
+		store:       sessionStore,
+		mysql:       mysqlStore,
+		redis:       redisClient,
+		rateLimiter: rateLimiter,
 		status: Status{
-			Env:          config.AppEnv(),
-			MySQLEnabled: sessionStore != nil,
-			RAGEnabled:   ragEnabled,
+			Env:                 config.AppEnv(),
+			MySQLEnabled:        mysqlStore != nil,
+			RAGEnabled:          ragEnabled,
+			RedisConfigured:     redisCfg.Enabled(),
+			RedisEnabled:        redisClient != nil,
+			SessionCacheEnabled: redisClient != nil && mysqlStore != nil,
+			RateLimitEnabled:    rateLimiter != nil,
 		},
 	}, nil
 }
 
 // Close 释放数据库连接等资源。
 func (a *App) Close() error {
-	if a.mysql != nil {
-		return a.mysql.Close()
+	var err error
+	if a.redis != nil {
+		err = a.redis.Close()
 	}
-	return nil
+	if a.mysql != nil {
+		if cerr := a.mysql.Close(); err == nil {
+			err = cerr
+		}
+	}
+	return err
+}
+
+// RateLimiter 返回 HTTP 限流器（未配置 Redis 或 REDIS_RATE_LIMIT=0 时为 nil）。
+func (a *App) RateLimiter() *redisx.RateLimiter {
+	return a.rateLimiter
 }
 
 // Status 返回各子系统启用状态。
