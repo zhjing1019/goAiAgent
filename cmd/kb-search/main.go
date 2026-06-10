@@ -9,7 +9,7 @@ import (
 	"log"
 	"os"
 
-	ragmilvus "github.com/zhjing1019/goAiAgent/internal/rag/milvus"
+	"github.com/zhjing1019/goAiAgent/internal/app"
 )
 
 func main() {
@@ -20,15 +20,17 @@ func main() {
 	query := os.Args[1]
 
 	ctx := context.Background()
-	kb, err := ragmilvus.OpenFromEnv(ctx)
+	application, err := app.NewFromEnv(ctx)
 	if err != nil {
-		log.Fatalf("RAG 初始化失败: %v", err)
+		log.Fatal(err)
 	}
-	if kb == nil {
+	defer application.Close()
+
+	if !application.Status().RAGEnabled {
 		log.Fatal("RAG 未启用，请配置 MILVUS_ADDR 和 EMBEDDING_API_KEY")
 	}
 
-	chunks, err := kb.Search(ctx, query, 5)
+	chunks, err := application.SearchKnowledge(ctx, query, 5)
 	if err != nil {
 		log.Fatalf("检索失败: %v", err)
 	}

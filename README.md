@@ -184,9 +184,10 @@ make run-dev
 ## 项目结构
 
 ```
-cmd/agent-demo/          Agent 交互入口
+cmd/agent-demo/          Agent 交互入口（CLI）
 cmd/kb-ingest/           批量导入文档到 Milvus
 cmd/kb-search/           命令行检索验证
+internal/app/            第 7 步：统一装配 LLM + MySQL + Milvus + Agent
 internal/agent/          Agent 循环与工具
 internal/rag/            切分、Embedding、知识库接口
 internal/rag/milvus/     Milvus 实现

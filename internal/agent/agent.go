@@ -17,7 +17,6 @@ import (
 //
 //	loop:
 //	  1. 把 history + 新用户消息发给 LLM（附带 tools）
-//	  2. 若模型返回 tool_calls → 执行工具 → 把结果追加到 history → 继续 loop
 //	  3. 若模型返回纯文本 → 结束，返回答案
 type Agent struct {
 	client       *llm.Client

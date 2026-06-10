@@ -1,18 +1,6 @@
-// 第 4–6 步演示：Agent + MySQL 记忆 + Milvus RAG
+// 第 7 步演示：通过 internal/app 统一装配的 Agent CLI
 //
-// 运行（在项目根目录）：
-//
-//	go run ./cmd/agent-demo
-//
-// 命令：
-//   - exit / quit       退出
-//   - reset / new       清空对话记忆
-//   - sessions          列出 MySQL 会话（需 MYSQL_DSN）
-//   - load <id>         恢复 MySQL 会话
-//   - kb add <文本>         手动写入知识库（需 Milvus + Embedding）
-//   - kb search <问题>      手动检索知识库
-//   - kb ingest <目录>      批量导入 .md/.txt 文档
-//   - kb seed               写入示例知识（便于测试 RAG）
+// 运行：make run-dev  或  go run ./cmd/agent-demo
 package main
 
 import (
@@ -21,74 +9,23 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"strings"
 
-	"github.com/zhjing1019/goAiAgent/internal/agent"
-	"github.com/zhjing1019/goAiAgent/internal/config"
-	"github.com/zhjing1019/goAiAgent/internal/llm"
-	"github.com/zhjing1019/goAiAgent/internal/rag"
-	ragmilvus "github.com/zhjing1019/goAiAgent/internal/rag/milvus"
-	"github.com/zhjing1019/goAiAgent/internal/store/mysql"
+	"github.com/zhjing1019/goAiAgent/internal/app"
 )
 
 func main() {
-	fmt.Printf("🌍 %s\n", config.EnvSummary())
-
-	client, err := llm.NewClientFromEnv()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	var sessionStore *mysql.Store
-	mysqlCfg, err := config.LoadMySQL()
-	if err != nil {
-		log.Fatal(err)
-	}
-	if mysqlCfg.Enabled() {
-		if err := mysql.EnsureDatabase(mysqlCfg.DSN); err != nil {
-			log.Fatalf("MySQL 初始化失败: %v\n请检查 .env 中的 MYSQL_DSN", err)
-		}
-		sessionStore, err = mysql.Open(mysqlCfg.DSN)
-		if err != nil {
-			log.Fatalf("MySQL 连接失败: %v\n请检查 .env 中的 MYSQL_DSN", err)
-		}
-		defer sessionStore.Close()
-
-		ctx := context.Background()
-		if err := sessionStore.Migrate(ctx); err != nil {
-			log.Fatalf("MySQL 建表失败: %v", err)
-		}
-		fmt.Println("✅ MySQL 已连接，对话将自动保存")
-	} else {
-		fmt.Println("ℹ️  未配置 MYSQL_DSN，使用内存记忆（重启后丢失）")
-	}
-
 	ctx := context.Background()
-	kb, err := ragmilvus.OpenFromEnv(ctx)
-	if err != nil {
-		log.Fatalf("RAG 初始化失败: %v", err)
-	}
-	if kb != nil {
-		fmt.Println("✅ Milvus 知识库已连接（search_knowledge / add_knowledge 已启用）")
-	} else {
-		fmt.Println("ℹ️  未配置 MILVUS_ADDR + EMBEDDING_API_KEY，RAG 未启用")
-	}
-
-	systemPrompt := buildSystemPrompt(kb != nil)
-	ag, err := agent.New(agent.Config{
-		Client:       client,
-		Tools:        agent.DefaultRegistry(kb),
-		Store:        sessionStore,
-		SystemPrompt: systemPrompt,
-		MaxSteps:     10,
-	})
+	application, err := app.NewFromEnv(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer application.Close()
 
+	st := application.Status()
+	st.PrintStartup()
 	fmt.Println("🤖 Agent 已启动（输入 exit 退出）")
-	printHelp(kb != nil, sessionStore != nil)
+	st.PrintHelp()
 	fmt.Println("---")
 
 	scanner := bufio.NewScanner(os.Stdin)
@@ -106,67 +43,41 @@ func main() {
 			break
 		}
 		if input == "reset" || input == "new" {
-			ag.Reset()
+			application.Reset()
 			fmt.Println("（对话已清空，下次将创建新会话）")
 			continue
 		}
 		if input == "sessions" {
-			handleSessions(ctx, ag, sessionStore)
+			handleSessions(ctx, application)
 			continue
 		}
 		if strings.HasPrefix(input, "load ") {
-			handleLoad(ctx, ag, sessionStore, input)
+			handleLoad(ctx, application, input)
 			continue
 		}
 		if strings.HasPrefix(input, "kb ") {
-			handleKB(ctx, kb, input)
+			handleKB(ctx, application, input)
 			continue
 		}
 
-		answer, err := ag.Run(ctx, input)
+		answer, err := application.Run(ctx, input)
 		if err != nil {
 			fmt.Println("错误:", err)
 			continue
 		}
 		fmt.Println("Agent:", answer)
-		if sid := ag.SessionID(); sid != "" && sessionStore != nil {
+		if sid := application.SessionID(); sid != "" && st.MySQLEnabled {
 			fmt.Printf("（会话 ID: %s）\n", sid)
 		}
 	}
 }
 
-func buildSystemPrompt(ragEnabled bool) string {
-	prompt := `你是一个 Go Agent 助手。
-- 需要当前时间时，调用 get_current_time
-- 需要计算两数之和时，调用 add_numbers
-- 需要计算两数之积时，调用 multiply_numbers
-- 拿到工具结果后，用自然语言回答用户`
-	if ragEnabled {
-		prompt += `
-- 当问题涉及文档、政策、产品说明、已入库知识时，先调用 search_knowledge 检索
-- 用户明确要求「记住/保存到知识库」时，调用 add_knowledge
-- 回答时结合检索到的内容，不知道就说不知道，不要编造`
-	}
-	return prompt
-}
-
-func printHelp(ragEnabled, mysqlEnabled bool) {
-	fmt.Println("可用工具: get_current_time, add_numbers, multiply_numbers")
-	if ragEnabled {
-		fmt.Println("RAG 工具: search_knowledge, add_knowledge")
-		fmt.Println("知识库命令: kb ingest <目录> | kb add <文本> | kb search <问题> | kb seed")
-	}
-	if mysqlEnabled {
-		fmt.Println("会话命令: sessions | load <id> | reset")
-	}
-}
-
-func handleSessions(ctx context.Context, ag *agent.Agent, store *mysql.Store) {
-	if store == nil {
+func handleSessions(ctx context.Context, a *app.App) {
+	if !a.Status().MySQLEnabled {
 		fmt.Println("未启用 MySQL，无法列出会话")
 		return
 	}
-	list, err := ag.ListSessions(ctx, 10)
+	list, err := a.ListSessions(ctx, 10)
 	if err != nil {
 		fmt.Println("错误:", err)
 		return
@@ -180,8 +91,8 @@ func handleSessions(ctx context.Context, ag *agent.Agent, store *mysql.Store) {
 	}
 }
 
-func handleLoad(ctx context.Context, ag *agent.Agent, store *mysql.Store, input string) {
-	if store == nil {
+func handleLoad(ctx context.Context, a *app.App, input string) {
+	if !a.Status().MySQLEnabled {
 		fmt.Println("未启用 MySQL，无法加载会话")
 		return
 	}
@@ -190,36 +101,45 @@ func handleLoad(ctx context.Context, ag *agent.Agent, store *mysql.Store, input 
 		fmt.Println("用法: load <session_id>")
 		return
 	}
-	if err := ag.LoadSession(ctx, id); err != nil {
+	if err := a.LoadSession(ctx, id); err != nil {
 		fmt.Println("错误:", err)
 		return
 	}
-	fmt.Printf("已加载会话 %s，共 %d 条历史消息\n", id[:8]+"...", len(ag.Messages()))
+	fmt.Printf("已加载会话 %s，共 %d 条历史消息\n", id[:8]+"...", a.MessageCount())
 }
 
-func handleKB(ctx context.Context, kb rag.KnowledgeBase, input string) {
-	if kb == nil {
+func handleKB(ctx context.Context, a *app.App, input string) {
+	if !a.Status().RAGEnabled {
 		fmt.Println("RAG 未启用，请配置 MILVUS_ADDR 和 EMBEDDING_API_KEY")
 		return
 	}
 	rest := strings.TrimSpace(strings.TrimPrefix(input, "kb "))
 	switch {
 	case rest == "seed":
-		seedKB(ctx, kb)
+		if err := a.SeedKnowledge(ctx); err != nil {
+			fmt.Println("错误:", err)
+			return
+		}
+		fmt.Println("✅ 已写入 3 条示例知识，可问：「这个项目有什么功能？」")
 	case strings.HasPrefix(rest, "ingest "):
 		dir := strings.TrimSpace(strings.TrimPrefix(rest, "ingest "))
 		if dir == "" {
 			fmt.Println("用法: kb ingest <目录>")
 			return
 		}
-		ingestKB(ctx, kb, dir)
+		report, err := a.IngestDir(ctx, dir)
+		if err != nil {
+			fmt.Println("错误:", err)
+			return
+		}
+		fmt.Printf("✅ 共导入 %d 个文件，%d 个向量切片\n", report.Files, report.Chunks)
 	case strings.HasPrefix(rest, "add "):
 		text := strings.TrimSpace(strings.TrimPrefix(rest, "add "))
 		if text == "" {
 			fmt.Println("用法: kb add <文本>")
 			return
 		}
-		if err := kb.Add(ctx, text, "cli"); err != nil {
+		if err := a.AddKnowledge(ctx, text, "cli"); err != nil {
 			fmt.Println("错误:", err)
 			return
 		}
@@ -230,7 +150,7 @@ func handleKB(ctx context.Context, kb rag.KnowledgeBase, input string) {
 			fmt.Println("用法: kb search <问题>")
 			return
 		}
-		chunks, err := kb.Search(ctx, query, 3)
+		chunks, err := a.SearchKnowledge(ctx, query, 3)
 		if err != nil {
 			fmt.Println("错误:", err)
 			return
@@ -245,63 +165,4 @@ func handleKB(ctx context.Context, kb rag.KnowledgeBase, input string) {
 	default:
 		fmt.Println("用法: kb ingest <目录> | kb add <文本> | kb search <问题> | kb seed")
 	}
-}
-
-func ingestKB(ctx context.Context, kb rag.KnowledgeBase, dir string) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		fmt.Println("错误:", err)
-		return
-	}
-	var count, chunks int
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		ext := strings.ToLower(filepath.Ext(e.Name()))
-		if ext != ".md" && ext != ".txt" {
-			continue
-		}
-		path := filepath.Join(dir, e.Name())
-		content, err := os.ReadFile(path)
-		if err != nil {
-			fmt.Println("读取失败:", path, err)
-			return
-		}
-		text := strings.TrimSpace(string(content))
-		if text == "" {
-			continue
-		}
-		parts := rag.SplitText(text, 500)
-		if err := kb.Add(ctx, text, e.Name()); err != nil {
-			fmt.Println("写入失败:", e.Name(), err)
-			return
-		}
-		count++
-		chunks += len(parts)
-		fmt.Printf("  ✅ %s → %d 切片\n", e.Name(), len(parts))
-	}
-	if count == 0 {
-		fmt.Println("（目录下没有 .md / .txt 文件）")
-		return
-	}
-	fmt.Printf("✅ 共导入 %d 个文件，%d 个向量切片\n", count, chunks)
-}
-
-func seedKB(ctx context.Context, kb rag.KnowledgeBase) {
-	docs := []struct {
-		content string
-		source  string
-	}{
-		{"Go Agent 项目支持多轮对话、工具调用、MySQL 持久化和 Milvus RAG。", "项目简介"},
-		{"DeepSeek 是 OpenAI 兼容的大模型 API，本项目通过 langchaingo 调用。", "模型说明"},
-		{"Agent 循环：用户输入 → LLM → 有 tool_calls 就执行工具 → 再调 LLM → 直到返回文本。", "架构说明"},
-	}
-	for _, d := range docs {
-		if err := kb.Add(ctx, d.content, d.source); err != nil {
-			fmt.Println("写入失败:", err)
-			return
-		}
-	}
-	fmt.Println("✅ 已写入 3 条示例知识，可问：「这个项目有什么功能？」")
 }
