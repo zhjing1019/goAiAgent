@@ -28,6 +28,19 @@ func TestHealth(t *testing.T) {
 	}
 }
 
+func TestChatInvalidSessionID(t *testing.T) {
+	srv := New(&app.App{})
+	payload := `{"message":"hi","session_id":"not-a-uuid"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/chat", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestChatEmptyMessage(t *testing.T) {
 	srv := New(&app.App{})
 	payload := `{"message":""}`

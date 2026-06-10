@@ -108,6 +108,19 @@ func (s *Store) CreateSession(ctx context.Context, title string) (string, error)
 	return id, nil
 }
 
+// SessionExists 判断 sessions 表是否存在该会话（空值缓存穿透防护用）。
+func (s *Store) SessionExists(ctx context.Context, sessionID string) (bool, error) {
+	var one int
+	err := s.db.QueryRowContext(ctx, `SELECT 1 FROM sessions WHERE id = ? LIMIT 1`, sessionID).Scan(&one)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("session exists: %w", err)
+	}
+	return true, nil
+}
+
 // LoadMessages 加载会话全部消息。
 func (s *Store) LoadMessages(ctx context.Context, sessionID string) ([]llm.Message, error) {
 	rows, err := s.db.QueryContext(ctx, `

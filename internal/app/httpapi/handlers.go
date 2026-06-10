@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+
+	"github.com/google/uuid"
 )
 
 // routes 注册路由
@@ -49,6 +51,13 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	if body.Message == "" {
 		writeError(w, http.StatusBadRequest, "message 不能为空")
 		return
+	}
+	// 穿透防护第 1 道：非法 session_id 直接 400，不进缓存/MySQL
+	if body.SessionID != "" {
+		if _, err := uuid.Parse(body.SessionID); err != nil {
+			writeError(w, http.StatusBadRequest, "session_id 格式无效，需为 UUID")
+			return
+		}
 	}
 
 	result, err := s.app.RunChat(r.Context(), body.SessionID, body.Message)
