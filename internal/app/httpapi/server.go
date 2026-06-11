@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/zhjing1019/goAiAgent/internal/app"
+	"github.com/zhjing1019/goAiAgent/internal/observability"
 )
 
 // Server HTTP 服务。
@@ -55,10 +56,11 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	return s.server.Shutdown(ctx)
 }
 
-// withMiddleware 添加中间件（CORS + Redis 限流）。
+// withMiddleware 添加中间件（可观测性 + CORS + Redis 限流）。
 func (s *Server) withMiddleware(next http.Handler) http.Handler {
 	h := next
 	h = rateLimitMiddleware(s.app.RateLimiter())(h)
+	h = observability.Middleware(h)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
@@ -73,6 +75,7 @@ func (s *Server) withMiddleware(next http.Handler) http.Handler {
 
 // printRoutes 打印路由
 func (s *Server) printRoutes() {
+	fmt.Println("   GET  /metrics")
 	fmt.Println("   GET  /api/health")
 	fmt.Println("   POST /api/chat")
 	fmt.Println("   GET  /api/sessions")

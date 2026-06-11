@@ -2,7 +2,8 @@
 //
 // 第 2 步：types.go  定义我们项目自己的请求/响应结构体
 // 第 3 步：client.go  真正发 HTTP 请求调用 DeepSeek
-//          convert.go  把我们的结构体 ↔ langchaingo 结构体互相转换
+//
+//	convert.go  把我们的结构体 ↔ langchaingo 结构体互相转换
 //
 // 为什么要分 types 和 client？
 //   - types：业务层统一数据结构（Agent、MySQL 记忆都用它）
@@ -12,9 +13,11 @@ package llm
 import (
 	"context"
 	"fmt"
+	"time"
 
-	"github.com/zhjing1019/goAiAgent/internal/config"
 	lcopenai "github.com/tmc/langchaingo/llms/openai"
+	"github.com/zhjing1019/goAiAgent/internal/config"
+	"github.com/zhjing1019/goAiAgent/internal/observability"
 )
 
 // Client 是对 DeepSeek 的封装，对外只暴露 Chat 方法。
@@ -106,20 +109,36 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, erro
 		req.Model = c.model
 	}
 
+	// 第 3 课：LLM 指标埋点（defer 保证成功/失败都会统计）
+	start := time.Now()
+	status := "ok"
+	// 延迟统计指标
+	defer func() {
+		// 统计指标
+		observability.LLMRequestsTotal.WithLabelValues(req.Model, status).Inc()
+		// 统计指标	用量
+		observability.LLMRequestDurationSeconds.WithLabelValues(req.Model).Observe(time.Since(start).Seconds())
+	}()
+
 	// 第 1 步：格式转换（我们的 Message → langchaingo MessageContent）
 	msgs, err := toLangChainMessages(req.Messages)
 	if err != nil {
+		status = "error"
 		return nil, fmt.Errorf("convert messages: %w", err)
 	}
 
 	// 第 2+3 步：带选项调用 langchaingo
-	// buildCallOptions(req) 返回 []CallOption，例如 WithTemperature、WithTools
-	// "..." 表示把切片展开成多个参数
 	resp, err := c.llm.GenerateContent(ctx, msgs, buildCallOptions(req)...)
 	if err != nil {
+		status = "error"
 		return nil, fmt.Errorf("deepseek chat: %w", err)
 	}
 
 	// 第 4 步：格式转换（langchaingo ContentResponse → 我们的 ChatResponse）
-	return fromLangChainResponse(req.Model, resp), nil
+	out := fromLangChainResponse(req.Model, resp)
+	if out.Usage != nil {
+		observability.LLMTokensTotal.WithLabelValues(req.Model, "prompt").Add(float64(out.Usage.PromptTokens))
+		observability.LLMTokensTotal.WithLabelValues(req.Model, "completion").Add(float64(out.Usage.CompletionTokens))
+	}
+	return out, nil
 }

@@ -42,12 +42,13 @@ func (a *App) IngestDir(ctx context.Context, dir string) (IngestReport, error) {
 		}
 		source := filepath.Base(path)
 		chunks := rag.SplitText(text, 500)
-		if err := a.addKnowledgeWithRetry(ctx, text, source); err != nil {
+		if err := a.kb.Add(ctx, text, source); err != nil {
 			return report, fmt.Errorf("写入 %s: %w", source, err)
 		}
 		report.Files++
 		report.Chunks += len(chunks)
-		time.Sleep(2 * time.Second) // Milvus Standalone 限流保护
+		// Milvus Standalone gRPC 限流约 10 秒 1 次，文件之间暂停
+		time.Sleep(10 * time.Second)
 	}
 	return report, nil
 }
@@ -87,24 +88,6 @@ func (a *App) SeedKnowledge(ctx context.Context) error {
 		}
 	}
 	return nil
-}
-
-// addKnowledgeWithRetry 写入知识，重试5次，每次间隔3秒，如果失败则返回错误
-func (a *App) addKnowledgeWithRetry(ctx context.Context, content, source string) error {
-	var err error
-	for attempt := 1; attempt <= 5; attempt++ {
-		err = a.kb.Add(ctx, content, source)
-		if err == nil {
-			return nil
-		}
-		if !strings.Contains(err.Error(), "rate limit") {
-			return err
-		}
-		wait := time.Duration(attempt) * 3 * time.Second
-		fmt.Printf("⏳ %s 触发 Milvus 限流，%v 后重试 (%d/5)...\n", source, wait, attempt)
-		time.Sleep(wait)
-	}
-	return err
 }
 
 // listDocFiles 列出目录下的 .md 和 .txt 文件

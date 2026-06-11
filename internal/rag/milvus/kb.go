@@ -64,10 +64,13 @@ func (k *KB) Add(ctx context.Context, content, source string) error {
 			Metadata:    meta,
 		})
 	}
-	// 将文档添加到知识库中
-	// 如果添加失败，则返回错误
-	if _, err := k.store.AddDocuments(ctx, docs); err != nil {
-		return fmt.Errorf("add documents: %w", err)
+	// 写入 Milvus（带限流重试，Standalone rate=0.1 时需放慢）
+	err := withMilvusRetry(ctx, "add documents", func() error {
+		_, e := k.store.AddDocuments(ctx, docs)
+		return e
+	})
+	if err != nil {
+		return err
 	}
 	return nil
 }

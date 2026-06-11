@@ -2,14 +2,19 @@ package httpapi
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strconv"
 
 	"github.com/google/uuid"
+	"github.com/zhjing1019/goAiAgent/internal/observability"
 )
 
 // routes 注册路由
 func (s *Server) routes() {
+	// 注册指标
+	s.mux.Handle("GET /metrics", observability.MetricsHandler())
+	// 注册路由
 	s.mux.HandleFunc("GET /api/health", s.handleHealth)
 	s.mux.HandleFunc("GET /", s.handleRoot)
 	s.mux.HandleFunc("POST /api/chat", s.handleChat)
@@ -62,6 +67,12 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 
 	result, err := s.app.RunChat(r.Context(), body.SessionID, body.Message)
 	if err != nil {
+		// 第 2 课示例：业务层打日志时带上 request_id，方便和中间件的访问日志关联
+		slog.Warn("chat 处理失败",
+			"request_id", observability.RequestIDFromContext(r.Context()),
+			"session_id", body.SessionID,
+			"err", err.Error(),
+		)
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
