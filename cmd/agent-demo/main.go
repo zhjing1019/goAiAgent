@@ -15,11 +15,15 @@ import (
 )
 
 func main() {
+	// 创建一个上下文
 	ctx := context.Background()
+	// 创建一个应用实例
 	application, err := app.NewFromEnv(ctx)
+	// 如果创建应用实例失败，则退出
 	if err != nil {
 		log.Fatal(err)
 	}
+	// 延迟关闭应用实例
 	defer application.Close()
 
 	st := application.Status()

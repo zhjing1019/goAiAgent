@@ -158,10 +158,13 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 
 // Close 释放数据库连接等资源。
 func (a *App) Close() error {
+	// 释放资源
 	var err error
+	// 释放 Redis
 	if a.redis != nil {
 		err = a.redis.Close()
 	}
+	// 释放 MySQL
 	if a.mysql != nil {
 		if cerr := a.mysql.Close(); err == nil {
 			err = cerr

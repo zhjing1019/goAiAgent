@@ -26,7 +26,6 @@ func (a *Agent) LoadSession(ctx context.Context, sessionID string) error {
 	}
 	a.messages = msgs
 	a.sessionID = sessionID
-	debugLog("已加载会话 %s，共 %d 条消息", sessionID, len(msgs))
 	return nil
 }
 
@@ -48,7 +47,6 @@ func (a *Agent) ensureSession(ctx context.Context, title string) error {
 		return err
 	}
 	a.sessionID = id
-	debugLog("新建会话: %s", id)
 	return nil
 }
 

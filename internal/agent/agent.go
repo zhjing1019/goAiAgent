@@ -65,7 +65,6 @@ func New(cfg Config) (*Agent, error) {
 
 // Run 处理用户输入，返回最终文本答案。
 func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
-	debugLog("用户输入: %s", userInput)
 	// 确保会话存在
 	if err := a.ensureSession(ctx, userInput); err != nil {
 		return "", err
@@ -77,7 +76,7 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 	if err := a.appendMessage(ctx, userMsg); err != nil {
 		return "", err
 	}
-
+	// 循环调用 LLM
 	for step := 1; step <= a.maxSteps; step++ {
 		req := llm.ChatRequest{
 			Messages:   a.buildMessagesForLLM(),
@@ -85,29 +84,15 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 			ToolChoice: "auto",
 		}
 
-		if step == 1 {
-			for _, tool := range req.Tools {
-				debugLog("可用工具: %s — %s", tool.Function.Name, tool.Function.Description)
-			}
-		}
-		debugLog("step %d/%d: 调用 LLM（history=%d）", step, a.maxSteps, len(a.messages))
-
 		resp, err := a.client.Chat(ctx, req)
 		if err != nil {
 			return "", fmt.Errorf("step %d chat: %w", step, err)
-		}
-
-		if resp.Usage != nil {
-			debugLog("step %d: tokens prompt=%d completion=%d total=%d",
-				step, resp.Usage.PromptTokens, resp.Usage.CompletionTokens, resp.Usage.TotalTokens)
 		}
 
 		msg := resp.AssistantMessage()
 		if msg == nil {
 			return "", fmt.Errorf("step %d: 模型无回复", step)
 		}
-
-		debugLog("step %d: LLM 回复 content=%q tool_calls=%d", step, msg.Content, len(msg.ToolCalls))
 
 		// 把 assistant 消息（可能含 tool_calls）记入 history
 		if err := a.appendMessage(ctx, *msg); err != nil {
@@ -116,19 +101,14 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 
 		// 没有 tool_calls → 最终答案
 		if !msg.HasToolCalls() {
-			debugLog("step %d: 完成", step)
 			return msg.Content, nil
 		}
 
 		// 有 tool_calls → 逐个执行，结果以 tool 消息回传
 		for _, tc := range msg.ToolCalls {
-			debugLog("step %d: 调用工具 %s args=%s", step, tc.Function.Name, tc.Function.Arguments)
 			result, err := a.tools.Execute(ctx, tc.Function.Name, tc.Function.Arguments)
 			if err != nil {
-				debugLog("step %d: 工具 %s 失败: %v", step, tc.Function.Name, err)
 				result = toolErrorResult(err)
-			} else {
-				debugLog("step %d: 工具 %s 结果=%s", step, tc.Function.Name, result)
 			}
 			toolMsg := llm.NewToolResultMessage(tc.ID, tc.Function.Name, result)
 			if err := a.appendMessage(ctx, toolMsg); err != nil {
@@ -142,8 +122,11 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 
 // buildMessagesForLLM 组装发给 LLM 的完整消息：system + 历史。
 func (a *Agent) buildMessagesForLLM() []llm.Message {
+	// 组装发给 LLM 的完整消息：system + 历史
 	out := make([]llm.Message, 0, 1+len(a.messages))
+	// 添加系统提示词
 	out = append(out, llm.NewSystemMessage(a.systemPrompt))
+	// 添加历史消息
 	out = append(out, a.messages...)
 	return out
 }

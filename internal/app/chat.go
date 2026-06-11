@@ -51,6 +51,7 @@ func (a *App) RunChat(ctx context.Context, sessionID, message string) (ChatResul
 	return ChatResult{Reply: reply, SessionID: a.agent.SessionID()}, nil
 }
 
+// spawnAgent 创建一个 Agent
 func (a *App) spawnAgent(sessionID string) (*agent.Agent, error) {
 	cfg := a.agentTpl
 	cfg.SessionID = sessionID
